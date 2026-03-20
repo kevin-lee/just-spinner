@@ -55,7 +55,7 @@ object SpinnerHandle {
       stateRef       <- mkRef(SpinnerState.initial)
       configRef      <- mkRef(initialConfig)
       cancelTokenRef <- mkRef(Option.empty[SpinnerTimer.CancelToken[F]])
-      unicodeSupp    <- effectOf(UnicodeSupport.isSupported)
+      unicodeSupp    <- effectOf(UnicodeSupport.fromPlatformUnicodeSupport)
       interactive    <- IsInteractive.check[F](output).map(initialConfig.isEnabled.getOrElse(_))
     } yield new DefaultSpinnerHandle[F](stateRef, configRef, cancelTokenRef, output, timer, unicodeSupp, interactive)
 
@@ -68,7 +68,7 @@ object SpinnerHandle {
     cancelTokenRef: SpinnerRef[F, Option[SpinnerTimer.CancelToken[F]]],
     output: TerminalOutput[F],
     timer: SpinnerTimer[F],
-    unicodeSupported: Boolean,
+    unicodeSupport: UnicodeSupport,
     interactive: Boolean,
   ) extends SpinnerHandle[F] {
 
@@ -156,22 +156,22 @@ object SpinnerHandle {
       } yield self
 
     def succeed(text: Option[String]): F[SpinnerHandle[F]] = {
-      val symbol = LogSymbol.colored(LogSymbol.Success, unicodeSupported)
+      val symbol = LogSymbol.colored(LogSymbol.Success, unicodeSupport)
       stopAndPersist(PersistOptions(Some(symbol), text, None, None))
     }
 
     def fail(text: Option[String]): F[SpinnerHandle[F]] = {
-      val symbol = LogSymbol.colored(LogSymbol.Error, unicodeSupported)
+      val symbol = LogSymbol.colored(LogSymbol.Error, unicodeSupport)
       stopAndPersist(PersistOptions(Some(symbol), text, None, None))
     }
 
     def warn(text: Option[String]): F[SpinnerHandle[F]] = {
-      val symbol = LogSymbol.colored(LogSymbol.Warning, unicodeSupported)
+      val symbol = LogSymbol.colored(LogSymbol.Warning, unicodeSupport)
       stopAndPersist(PersistOptions(Some(symbol), text, None, None))
     }
 
     def info(text: Option[String]): F[SpinnerHandle[F]] = {
-      val symbol = LogSymbol.colored(LogSymbol.Info, unicodeSupported)
+      val symbol = LogSymbol.colored(LogSymbol.Info, unicodeSupport)
       stopAndPersist(PersistOptions(Some(symbol), text, None, None))
     }
 

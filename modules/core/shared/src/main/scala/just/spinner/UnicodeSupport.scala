@@ -4,6 +4,18 @@ package just.spinner
   *
   * Delegates to platform-specific detection.
   */
+sealed trait UnicodeSupport
 object UnicodeSupport {
-  def isSupported: Boolean = PlatformUnicodeSupport.isSupported
+  case object Supported extends UnicodeSupport
+  case object Unsupported extends UnicodeSupport
+
+  def supported: UnicodeSupport   = Supported
+  def unsupported: UnicodeSupport = Unsupported
+
+  def fromPlatformUnicodeSupport: UnicodeSupport =
+    if (PlatformUnicodeSupport.isSupported)
+      supported
+    else
+      unsupported
+
 }

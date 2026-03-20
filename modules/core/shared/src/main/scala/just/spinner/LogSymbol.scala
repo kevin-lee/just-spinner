@@ -16,11 +16,14 @@ object LogSymbol {
 
   def unapply(symbol: LogSymbol): Option[(String, String)] = Some((symbol.unicode, symbol.ascii))
 
-  def resolve(symbol: LogSymbol, unicodeSupported: Boolean): String =
-    if (unicodeSupported) symbol.unicode else symbol.ascii
+  def resolve(symbol: LogSymbol, unicodeSupport: UnicodeSupport): String =
+    unicodeSupport match {
+      case UnicodeSupport.Supported => symbol.unicode
+      case UnicodeSupport.Unsupported => symbol.ascii
+    }
 
-  def colored(symbol: LogSymbol, unicodeSupported: Boolean): String = {
-    val resolved = resolve(symbol, unicodeSupported)
+  def colored(symbol: LogSymbol, unicodeSupport: UnicodeSupport): String = {
+    val resolved = resolve(symbol, unicodeSupport)
     symbol match {
       case Info => AnsiCode.color(resolved, Color.blue)
       case Success => AnsiCode.color(resolved, Color.green)
