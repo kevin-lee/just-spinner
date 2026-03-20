@@ -1,22 +1,25 @@
 package just.spinner
 
+import effectie.core.FxCtor
+import effectie.syntax.all.*
+
 /** Scala.js (Node.js) implementation of TerminalOutput.
   */
 private[spinner] object PlatformTerminalOutput {
 
-  val stderr: TerminalOutput = new TerminalOutput {
-    def write(s: String): Unit = {
+  def stderr[F[*]: FxCtor]: TerminalOutput[F] = new TerminalOutput[F] {
+    def write(s: String): F[Unit] = effectOf {
       val _ = NodeProcess.stderr.write(s)
     }
 
-    def isTTY: Boolean =
-      NodeProcess.stderr.isTTY.getOrElse(false)
+    def isTTY: F[Boolean] =
+      effectOf(NodeProcess.stderr.isTTY.getOrElse(false))
 
-    def columns: Option[Int] =
-      NodeProcess.stderr.columns.toOption
+    def columns: F[Option[Int]] =
+      effectOf(NodeProcess.stderr.columns.toOption)
 
-    def rows: Option[Int] =
-      NodeProcess.stderr.rows.toOption
+    def rows: F[Option[Int]] =
+      effectOf(NodeProcess.stderr.rows.toOption)
   }
 
 }

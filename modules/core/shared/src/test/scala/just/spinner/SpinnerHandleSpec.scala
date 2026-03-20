@@ -1,7 +1,9 @@
 package just.spinner
 
-import hedgehog._
-import hedgehog.runner._
+import cats.Id
+import effectie.instances.id.fx.*
+import hedgehog.*
+import hedgehog.runner.*
 
 import java.util.concurrent.atomic.AtomicReference
 import scala.concurrent.duration.FiniteDuration
@@ -9,8 +11,8 @@ import scala.concurrent.duration.FiniteDuration
 @SuppressWarnings(Array("org.wartremover.warts.Equals", "org.wartremover.warts.NonUnitStatements"))
 object SpinnerHandleSpec extends Properties {
 
-  /** A mock TerminalOutput that captures all writes to a buffer. */
-  final class MockTerminalOutput(tty: Boolean) extends TerminalOutput {
+  /** A mock TerminalOutput[Id] that captures all writes to a buffer. */
+  final class MockTerminalOutput(tty: Boolean) extends TerminalOutput[Id] {
     private val buffer: AtomicReference[List[String]] = new AtomicReference(Nil)
 
     @scala.annotation.tailrec
@@ -28,11 +30,11 @@ object SpinnerHandleSpec extends Properties {
     def reset(): Unit         = { buffer.set(Nil); () }
   }
 
-  /** A mock SpinnerTimer that executes the task synchronously once. */
-  object MockSpinnerTimer extends SpinnerTimer {
-    def scheduleAtFixedRate(interval: FiniteDuration)(task: => Unit): SpinnerTimer.CancelToken = {
+  /** A mock SpinnerTimer[Id] that executes the task synchronously once. */
+  object MockSpinnerTimer extends SpinnerTimer[Id] {
+    def scheduleAtFixedRate(interval: FiniteDuration)(task: => Unit): SpinnerTimer.CancelToken[Id] = {
       task // execute once synchronously
-      SpinnerTimer.CancelToken(() => ())
+      SpinnerTimer.CancelToken[Id](() => ())
     }
   }
 
@@ -51,14 +53,15 @@ object SpinnerHandleSpec extends Properties {
 
   def testCreateSpinner: Result = {
     val config = SpinnerConfig.default.withText("loading")
-    val handle = Spinner.createWith(config, new MockTerminalOutput(false), MockSpinnerTimer)
+    val output = new MockTerminalOutput(false)
+    val handle = Spinner.create[Id](config, output, MockSpinnerTimer, SpinnerRefMaker.atomicRef[Id])
     Result.assert(!handle.isSpinning)
   }
 
   def testStartNonInteractive: Result = {
     val output = new MockTerminalOutput(false)
     val config = SpinnerConfig.default.withText("loading")
-    val handle = Spinner.createWith(config, output, MockSpinnerTimer)
+    val handle = Spinner.create[Id](config, output, MockSpinnerTimer, SpinnerRefMaker.atomicRef[Id])
     val _      = handle.start()
     val joined = output.writtenJoined
     Result.assert(joined.contains("loading")).and(Result.assert(joined.contains("-")))
@@ -67,7 +70,7 @@ object SpinnerHandleSpec extends Properties {
   def testStartSilent: Result = {
     val output = new MockTerminalOutput(false)
     val config = SpinnerConfig.default.withText("loading").withSilent(true)
-    val handle = Spinner.createWith(config, output, MockSpinnerTimer)
+    val handle = Spinner.create[Id](config, output, MockSpinnerTimer, SpinnerRefMaker.atomicRef[Id])
     val _      = handle.start()
     output.written ==== Nil
   }
@@ -75,7 +78,7 @@ object SpinnerHandleSpec extends Properties {
   def testSucceed: Result = {
     val output = new MockTerminalOutput(false)
     val config = SpinnerConfig.default.withText("loading")
-    val handle = Spinner.createWith(config, output, MockSpinnerTimer)
+    val handle = Spinner.create[Id](config, output, MockSpinnerTimer, SpinnerRefMaker.atomicRef[Id])
     val _      = handle.start()
     output.reset()
     (handle.succeed(Some("done")): Unit)
@@ -86,7 +89,7 @@ object SpinnerHandleSpec extends Properties {
   def testFail: Result = {
     val output = new MockTerminalOutput(false)
     val config = SpinnerConfig.default.withText("loading")
-    val handle = Spinner.createWith(config, output, MockSpinnerTimer)
+    val handle = Spinner.create[Id](config, output, MockSpinnerTimer, SpinnerRefMaker.atomicRef[Id])
     val _      = handle.start()
     output.reset()
     (handle.fail(Some("error occurred")): Unit)
@@ -97,7 +100,7 @@ object SpinnerHandleSpec extends Properties {
   def testUpdateText: Result = {
     val output = new MockTerminalOutput(false)
     val config = SpinnerConfig.default.withText("initial")
-    val handle = Spinner.createWith(config, output, MockSpinnerTimer)
+    val handle = Spinner.create[Id](config, output, MockSpinnerTimer, SpinnerRefMaker.atomicRef[Id])
     handle.updateText("updated")
     handle.text ==== "updated"
   }
@@ -105,7 +108,7 @@ object SpinnerHandleSpec extends Properties {
   def testPrintln: Result = {
     val output = new MockTerminalOutput(false)
     val config = SpinnerConfig.default.withText("loading")
-    val handle = Spinner.createWith(config, output, MockSpinnerTimer)
+    val handle = Spinner.create[Id](config, output, MockSpinnerTimer, SpinnerRefMaker.atomicRef[Id])
     handle.println("a message")
     val joined = output.writtenJoined
     Result.assert(joined.contains("a message"))
@@ -114,7 +117,7 @@ object SpinnerHandleSpec extends Properties {
   def testFrame: Result = {
     val output = new MockTerminalOutput(false)
     val config = SpinnerConfig.default.withText("loading").withNoColor
-    val handle = Spinner.createWith(config, output, MockSpinnerTimer)
+    val handle = Spinner.create[Id](config, output, MockSpinnerTimer, SpinnerRefMaker.atomicRef[Id])
     val f      = handle.frame()
     Result.assert(f.contains("loading"))
   }
@@ -122,7 +125,7 @@ object SpinnerHandleSpec extends Properties {
   def testStopAndPersist: Result = {
     val output  = new MockTerminalOutput(false)
     val config  = SpinnerConfig.default.withText("loading")
-    val handle  = Spinner.createWith(config, output, MockSpinnerTimer)
+    val handle  = Spinner.create[Id](config, output, MockSpinnerTimer, SpinnerRefMaker.atomicRef[Id])
     val _       = handle.start()
     output.reset()
     val options = PersistOptions.empty.withSymbol("*").withText("persisted")
@@ -134,11 +137,12 @@ object SpinnerHandleSpec extends Properties {
   def testStartWithEnabledForcesInteractive: Result = {
     val output = new MockTerminalOutput(false) // non-TTY
     val config = SpinnerConfig.default.withText("loading").withEnabled(true)
-    val handle = Spinner.createWith(config, output, MockSpinnerTimer)
+    val handle = Spinner.create[Id](config, output, MockSpinnerTimer, SpinnerRefMaker.atomicRef[Id])
     val _      = handle.start()
     val joined = output.writtenJoined
     // Interactive mode writes ANSI cursor-hide and renders a spinner frame, not a static "-"
-    Result.assert(handle.isSpinning)
+    Result
+      .assert(handle.isSpinning)
       .and(Result.assert(joined.contains(AnsiCode.cursorHide)))
       .and(Result.assert(!joined.contains("- loading")))
   }

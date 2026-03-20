@@ -1,257 +1,280 @@
 package just.spinner
 
+import cats.Monad
+import cats.syntax.all.*
+import effectie.core.FxCtor
+import effectie.syntax.all.*
+
 /** Handle to a spinner instance that can be started, stopped, and updated.
+  *
+  * All operations are parameterized by effect type `F[*]`.
+  * For synchronous (side-effecting) usage, use `F = cats.Id`.
   */
-trait SpinnerHandle {
+trait SpinnerHandle[F[*]] {
 
-  def text: String
-  def updateText(newText: String): Unit
-  def updateColor(newColor: Color): Unit
-  def updateNoColor(): Unit
-  def updatePrefixText(newText: String): Unit
-  def updateSuffixText(newText: String): Unit
-  def updateSpinnerType(newSpinnerType: SpinnerType): Unit
-  def updateIndent(newIndent: Int): Unit
+  def text: F[String]
+  def updateText(newText: String): F[Unit]
+  def updateColor(newColor: Color): F[Unit]
+  def updateNoColor(): F[Unit]
+  def updatePrefixText(newText: String): F[Unit]
+  def updateSuffixText(newText: String): F[Unit]
+  def updateSpinnerType(newSpinnerType: SpinnerType): F[Unit]
+  def updateIndent(newIndent: Int): F[Unit]
 
-  def isSpinning: Boolean
+  def isSpinning: F[Boolean]
 
-  def start(): SpinnerHandle
-  def stop(): SpinnerHandle
-  def succeed(text: Option[String]): SpinnerHandle
-  def fail(text: Option[String]): SpinnerHandle
-  def warn(text: Option[String]): SpinnerHandle
-  def info(text: Option[String]): SpinnerHandle
-  def stopAndPersist(options: PersistOptions): SpinnerHandle
+  def start(): F[SpinnerHandle[F]]
+  def stop(): F[SpinnerHandle[F]]
+  def succeed(text: Option[String]): F[SpinnerHandle[F]]
+  def fail(text: Option[String]): F[SpinnerHandle[F]]
+  def warn(text: Option[String]): F[SpinnerHandle[F]]
+  def info(text: Option[String]): F[SpinnerHandle[F]]
+  def stopAndPersist(options: PersistOptions): F[SpinnerHandle[F]]
 
   /** Print a line cleanly while spinner is running (cooperative hooking).
     * Clears the spinner, writes the message, then re-renders the spinner.
     */
-  def println(msg: String): Unit
+  def println(msg: String): F[Unit]
 
-  def frame(): String
-  def clear(): SpinnerHandle
-  def render(): SpinnerHandle
+  def frame(): F[String]
+  def clear(): F[SpinnerHandle[F]]
+  def render(): F[SpinnerHandle[F]]
 
-  def getCurrentConfig: SpinnerConfig
+  def getCurrentConfig: F[SpinnerConfig]
 
 }
 object SpinnerHandle {
 
-  def apply(
+  def apply[F[*]: Monad: FxCtor](
     initialConfig: SpinnerConfig,
-    output: TerminalOutput,
-    timer: SpinnerTimer,
-  ): SpinnerHandle = new DefaultSpinnerHandle(initialConfig, output, timer)
+    output: TerminalOutput[F],
+    timer: SpinnerTimer[F],
+    mkRef: SpinnerRefMaker[F],
+  ): F[SpinnerHandle[F]] =
+    for {
+      stateRef       <- mkRef(SpinnerState.initial)
+      configRef      <- mkRef(initialConfig)
+      cancelTokenRef <- mkRef(Option.empty[SpinnerTimer.CancelToken[F]])
+      unicodeSupp    <- effectOf(UnicodeSupport.isSupported)
+      interactive    <- IsInteractive.check[F](output).map(initialConfig.isEnabled.getOrElse(_))
+    } yield new DefaultSpinnerHandle[F](stateRef, configRef, cancelTokenRef, output, timer, unicodeSupp, interactive)
 
-  import java.util.concurrent.atomic.AtomicReference
-
-  /** Default SpinnerHandle implementation using AtomicReference for thread-safe mutable state.
+  /** Default SpinnerHandle implementation using SpinnerRef for thread-safe mutable state.
     */
-  final private class DefaultSpinnerHandle(
-    initialConfig: SpinnerConfig,
-    output: TerminalOutput,
-    timer: SpinnerTimer,
-  ) extends SpinnerHandle {
+  @SuppressWarnings(Array("org.wartremover.warts.NonUnitStatements"))
+  final private class DefaultSpinnerHandle[F[*]: Monad: FxCtor](
+    stateRef: SpinnerRef[F, SpinnerState],
+    configRef: SpinnerRef[F, SpinnerConfig],
+    cancelTokenRef: SpinnerRef[F, Option[SpinnerTimer.CancelToken[F]]],
+    output: TerminalOutput[F],
+    timer: SpinnerTimer[F],
+    unicodeSupported: Boolean,
+    interactive: Boolean,
+  ) extends SpinnerHandle[F] {
 
-    private val stateRef: AtomicReference[SpinnerState] = new AtomicReference(SpinnerState.initial)
+    private val self: SpinnerHandle[F] = this
 
-    private val configRef: AtomicReference[SpinnerConfig] = new AtomicReference(initialConfig)
+    def text: F[String] = configRef.get.map(_.text.getOrElse(""))
 
-    private val cancelTokenRef: AtomicReference[Option[SpinnerTimer.CancelToken]] = new AtomicReference(None)
-
-    private val unicodeSupported: Boolean = UnicodeSupport.isSupported
-
-    private val interactive: Boolean = initialConfig.isEnabled.getOrElse(IsInteractive.check(output))
-
-    def text: String = configRef.get().text.getOrElse("")
-
-    def updateText(newText: String): Unit =
+    def updateText(newText: String): F[Unit] =
       updateConfig(_.withText(newText))
 
-    def updateColor(newColor: Color): Unit =
+    def updateColor(newColor: Color): F[Unit] =
       updateConfig(_.withColor(newColor))
 
-    def updateNoColor(): Unit =
+    def updateNoColor(): F[Unit] =
       updateConfig(_.withNoColor)
 
-    def updatePrefixText(newText: String): Unit =
+    def updatePrefixText(newText: String): F[Unit] =
       updateConfig(_.withPrefixText(newText))
 
-    def updateSuffixText(newText: String): Unit =
+    def updateSuffixText(newText: String): F[Unit] =
       updateConfig(_.withSuffixText(newText))
 
-    def updateSpinnerType(newSpinnerType: SpinnerType): Unit = {
-      updateConfig(_.withSpinnerType(newSpinnerType))
-      updateState(_.copy(frameIndex = -1))
-    }
+    def updateSpinnerType(newSpinnerType: SpinnerType): F[Unit] =
+      for {
+        _ <- updateConfig(_.withSpinnerType(newSpinnerType))
+        _ <- stateRef.update(_.copy(frameIndex = -1))
+      } yield ()
 
-    def updateIndent(newIndent: Int): Unit =
+    def updateIndent(newIndent: Int): F[Unit] =
       updateConfig(_.withIndent(newIndent))
 
-    def isSpinning: Boolean = stateRef.get().isRunning
+    def isSpinning: F[Boolean] = stateRef.get.map(_.isRunning)
 
-    def start(): SpinnerHandle = {
-      val config = configRef.get()
-      if (config.isSilent) {
-        this
-      } else if (!interactive) {
-        /* Non-interactive: just write static line */
-        val symbol  = config.text.map(_ => "-").getOrElse("")
-        val line    = buildOutputLine(symbol, config.text, config.prefixText, config.suffixText, config.indent)
-        val trimmed = line.trim
-        if (trimmed.nonEmpty) {
-          output.write(line + "\n")
-        }
-        this
-      } else if (isSpinning) {
-        this
-      } else {
-        if (config.hideCursor) {
-          output.write(AnsiCode.cursorHide)
-        }
-        updateState(_.copy(isRunning = true))
-        val _     = render()
-        val token = timer.scheduleAtFixedRate(config.spinnerType.interval) {
-          if (isSpinning) {
-            val _ = render()
+    def start(): F[SpinnerHandle[F]] =
+      for {
+        config <- configRef.get
+        result <-
+          if (config.isSilent) {
+            Monad[F].pure(self)
+          } else if (!interactive) {
+            val symbol  = config.text.map(_ => "-").getOrElse("")
+            val line    = buildOutputLine(symbol, config.text, config.prefixText, config.suffixText, config.indent)
+            val trimmed = line.trim
+            if (trimmed.nonEmpty)
+              output.write(line + "\n").as(self)
+            else
+              Monad[F].pure(self)
+          } else {
+            for {
+              spinning <- isSpinning
+              result   <-
+                if (spinning) {
+                  Monad[F].pure(self)
+                } else {
+                  for {
+                    _     <- if (config.hideCursor) output.write(AnsiCode.cursorHide) else Monad[F].unit
+                    _     <- stateRef.update(_.copy(isRunning = true))
+                    _     <- render()
+                    token <- timer.scheduleAtFixedRate(config.spinnerType.interval) {
+                               isSpinning.flatMap { s =>
+                                 if (s) render().void else Monad[F].unit
+                               }
+                             }
+                    _     <- cancelTokenRef.set(Some(token))
+                  } yield self
+                }
+            } yield result
           }
-        }
-        cancelTokenRef.set(Some(token))
-        this
-      }
-    }
+      } yield result
 
-    def stop(): SpinnerHandle = {
-      casGetAndSet(cancelTokenRef, None).foreach(_.cancel())
-      updateState(_.copy(isRunning = false, frameIndex = -1, lastFrameTime = 0L))
-      if (interactive) {
-        val _      = clear()
-        val config = configRef.get()
-        if (config.hideCursor) {
-          output.write(AnsiCode.cursorShow)
-        }
-      }
-      this
-    }
+    def stop(): F[SpinnerHandle[F]] =
+      for {
+        oldToken <- cancelTokenRef.getAndSet(None)
+        _        <- oldToken.traverse_(_.cancel())
+        _        <- stateRef.update(_.copy(isRunning = false, frameIndex = -1, lastFrameTime = 0L))
+        _        <-
+          if (interactive)
+            for {
+              _      <- clear()
+              config <- configRef.get
+              _      <- if (config.hideCursor) output.write(AnsiCode.cursorShow) else Monad[F].unit
+            } yield ()
+          else
+            Monad[F].unit
+      } yield self
 
-    def succeed(text: Option[String]): SpinnerHandle = {
+    def succeed(text: Option[String]): F[SpinnerHandle[F]] = {
       val symbol = LogSymbol.colored(LogSymbol.Success, unicodeSupported)
       stopAndPersist(PersistOptions(Some(symbol), text, None, None))
     }
 
-    def fail(text: Option[String]): SpinnerHandle = {
+    def fail(text: Option[String]): F[SpinnerHandle[F]] = {
       val symbol = LogSymbol.colored(LogSymbol.Error, unicodeSupported)
       stopAndPersist(PersistOptions(Some(symbol), text, None, None))
     }
 
-    def warn(text: Option[String]): SpinnerHandle = {
+    def warn(text: Option[String]): F[SpinnerHandle[F]] = {
       val symbol = LogSymbol.colored(LogSymbol.Warning, unicodeSupported)
       stopAndPersist(PersistOptions(Some(symbol), text, None, None))
     }
 
-    def info(text: Option[String]): SpinnerHandle = {
+    def info(text: Option[String]): F[SpinnerHandle[F]] = {
       val symbol = LogSymbol.colored(LogSymbol.Info, unicodeSupported)
       stopAndPersist(PersistOptions(Some(symbol), text, None, None))
     }
 
-    def stopAndPersist(options: PersistOptions): SpinnerHandle = {
-      val config = configRef.get()
-      if (config.isSilent) {
-        this
-      } else {
-        val symbol    = options.symbol.getOrElse(" ")
-        val finalText = options.text.orElse(config.text)
-        val prefix    = options.prefixText.orElse(config.prefixText)
-        val suffix    = options.suffixText.orElse(config.suffixText)
-        val line      = buildOutputLine(symbol, finalText, prefix, suffix, config.indent)
-        val _         = stop()
-        output.write(line + "\n")
-        this
-      }
-    }
-
-    @SuppressWarnings(Array("org.wartremover.warts.NonUnitStatements"))
-    def println(msg: String): Unit =
-      if (isSpinning) {
-        (clear(): Unit)
-        output.write(msg + "\n")
-        (render(): Unit)
-      } else {
-        output.write(msg + "\n")
-      }
-
-    def frame(): String = {
-      val config    = configRef.get()
-      val state     = advanceFrame(config)
-      val frames    = config.spinnerType.frames
-      val idx       = state.frameIndex
-      val frameChar = frames.lift(idx).getOrElse("")
-
-      val coloredFrame = config.color.fold(frameChar)(c => AnsiCode.color(frameChar, c))
-
-      val prefixStr = config.prefixText.filter(_.nonEmpty).map(_ + " ").getOrElse("")
-      val textStr   = config.text.map(t => " " + t).getOrElse("")
-      val suffixStr = config.suffixText.filter(_.nonEmpty).map(s => " " + s).getOrElse("")
-      val indentStr = " " * config.indent
-
-      indentStr + prefixStr + coloredFrame + textStr + suffixStr
-    }
-
-    def clear(): SpinnerHandle = {
-      if (interactive) {
-        val linesToClear = stateRef.get().linesToClear
-        output.write(AnsiCode.cursorTo(0))
-        (0 until linesToClear).foreach { i =>
-          if (i > 0) {
-            output.write(AnsiCode.moveUp(1))
+    def stopAndPersist(options: PersistOptions): F[SpinnerHandle[F]] =
+      for {
+        config <- configRef.get
+        result <-
+          if (config.isSilent) {
+            Monad[F].pure(self)
+          } else {
+            val symbol    = options.symbol.getOrElse(" ")
+            val finalText = options.text.orElse(config.text)
+            val prefix    = options.prefixText.orElse(config.prefixText)
+            val suffix    = options.suffixText.orElse(config.suffixText)
+            val line      = buildOutputLine(symbol, finalText, prefix, suffix, config.indent)
+            for {
+              _ <- stop()
+              _ <- output.write(line + "\n")
+            } yield self
           }
-          output.write(AnsiCode.eraseLine)
-        }
-        val config       = configRef.get()
-        if (config.indent > 0) {
-          output.write(AnsiCode.cursorTo(config.indent))
-        }
-        updateState(_.copy(linesToClear = 0))
-      }
-      this
-    }
+      } yield result
 
-    def render(): SpinnerHandle = {
+    def println(msg: String): F[Unit] =
+      for {
+        spinning <- isSpinning
+        _        <-
+          if (spinning)
+            for {
+              _ <- clear()
+              _ <- output.write(msg + "\n")
+              _ <- render()
+            } yield ()
+          else
+            output.write(msg + "\n")
+      } yield ()
+
+    def frame(): F[String] =
+      for {
+        config <- configRef.get
+        state  <- advanceFrame(config)
+      } yield {
+        val frames    = config.spinnerType.frames
+        val idx       = state.frameIndex
+        val frameChar = frames.lift(idx).getOrElse("")
+
+        val coloredFrame = config.color.fold(frameChar)(c => AnsiCode.color(frameChar, c))
+
+        val prefixStr = config.prefixText.filter(_.nonEmpty).map(_ + " ").getOrElse("")
+        val textStr   = config.text.map(t => " " + t).getOrElse("")
+        val suffixStr = config.suffixText.filter(_.nonEmpty).map(s => " " + s).getOrElse("")
+        val indentStr = " " * config.indent
+
+        indentStr + prefixStr + coloredFrame + textStr + suffixStr
+      }
+
+    def clear(): F[SpinnerHandle[F]] =
+      if (interactive)
+        for {
+          linesToClear <- stateRef.get.map(_.linesToClear)
+          _            <- output.write(AnsiCode.cursorTo(0))
+          _            <- (0 until linesToClear).toList.traverse_ { i =>
+                            for {
+                              _ <- if (i > 0) output.write(AnsiCode.moveUp(1)) else Monad[F].unit
+                              _ <- output.write(AnsiCode.eraseLine)
+                            } yield ()
+                          }
+          config       <- configRef.get
+          _            <- if (config.indent > 0) output.write(AnsiCode.cursorTo(config.indent)) else Monad[F].unit
+          _            <- stateRef.update(_.copy(linesToClear = 0))
+        } yield self
+      else
+        Monad[F].pure(self)
+
+    def render(): F[SpinnerHandle[F]] =
       if (!interactive) {
-        this
+        Monad[F].pure(self)
       } else {
         val useSyncOutput = interactive
-        if (useSyncOutput) {
-          output.write(AnsiCode.syncOutputEnable)
-        }
-
-        val _            = clear()
-        val frameContent = frame()
-        val columns      = output.columns.getOrElse(80)
-        val lineCount    = computeLineCount(frameContent, columns)
-        output.write(frameContent)
-        updateState(_.copy(linesToClear = lineCount))
-
-        if (useSyncOutput) {
-          output.write(AnsiCode.syncOutputDisable)
-        }
-        this
+        for {
+          _            <- if (useSyncOutput) output.write(AnsiCode.syncOutputEnable) else Monad[F].unit
+          _            <- clear()
+          frameContent <- frame()
+          columns      <- output.columns.map(_.getOrElse(80))
+          lineCount = computeLineCount(frameContent, columns)
+          _ <- output.write(frameContent)
+          _ <- stateRef.update(_.copy(linesToClear = lineCount))
+          _ <- if (useSyncOutput) output.write(AnsiCode.syncOutputDisable) else Monad[F].unit
+        } yield self
       }
-    }
 
-    def getCurrentConfig: SpinnerConfig = configRef.get()
+    def getCurrentConfig: F[SpinnerConfig] = configRef.get
 
-    private def advanceFrame(config: SpinnerConfig): SpinnerState = {
-      val now = System.currentTimeMillis()
-      casUpdateAndGet(stateRef) { current =>
-        if (current.frameIndex < 0 || (now - current.lastFrameTime) >= config.spinnerType.interval.toMillis) {
-          val nextIndex = (current.frameIndex + 1) % math.max(1, config.spinnerType.frames.length)
-          current.copy(frameIndex = nextIndex, lastFrameTime = now)
-        } else {
-          current
+    private def advanceFrame(config: SpinnerConfig): F[SpinnerState] =
+      effectOf(System.currentTimeMillis()).flatMap { now =>
+        stateRef.updateAndGet { current =>
+          if (current.frameIndex < 0 || (now - current.lastFrameTime) >= config.spinnerType.interval.toMillis) {
+            val nextIndex = (current.frameIndex + 1) % math.max(1, config.spinnerType.frames.length)
+            current.copy(frameIndex = nextIndex, lastFrameTime = now)
+          } else {
+            current
+          }
         }
       }
-    }
 
     private def computeLineCount(text: String, columns: Int): Int = {
       val stripped = StringWidth.stripAnsi(text)
@@ -276,28 +299,8 @@ object SpinnerHandle {
       indentStr + prefixStr + symbol + textStr + suffixStr
     }
 
-    private def updateConfig(f: SpinnerConfig => SpinnerConfig): Unit = {
-      val _ = casUpdateAndGet(configRef)(f)
-    }
-
-    private def updateState(f: SpinnerState => SpinnerState): Unit = {
-      val _ = casUpdateAndGet(stateRef)(f)
-    }
-
-    @scala.annotation.tailrec
-    private def casUpdateAndGet[A](ref: AtomicReference[A])(f: A => A): A = {
-      val current = ref.get()
-      val updated = f(current)
-      if (ref.compareAndSet(current, updated)) updated
-      else casUpdateAndGet(ref)(f)
-    }
-
-    @scala.annotation.tailrec
-    private def casGetAndSet[A](ref: AtomicReference[A], newValue: A): A = {
-      val current = ref.get()
-      if (ref.compareAndSet(current, newValue)) current
-      else casGetAndSet(ref, newValue)
-    }
+    private def updateConfig(f: SpinnerConfig => SpinnerConfig): F[Unit] =
+      configRef.update(f)
 
   }
 
