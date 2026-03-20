@@ -1,7 +1,7 @@
 package just.spinner
 
-import hedgehog._
-import hedgehog.runner._
+import hedgehog.*
+import hedgehog.runner.*
 
 object SpinnerConfigSpec extends Properties {
 

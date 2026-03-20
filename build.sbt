@@ -33,6 +33,10 @@ lazy val root = (project in file("."))
 lazy val core = module("core", crossProject(JVMPlatform, JSPlatform, NativePlatform))
   .settings(
     crossScalaVersions := props.CrossScalaVersions,
+    libraryDependencies ++= List(
+      libs.catsCore.value,
+      libs.effectieCats.value,
+    ),
   )
 
 lazy val coreJvm    = core.jvm
@@ -110,7 +114,9 @@ lazy val props =
 
     lazy val licenses = List(License.MIT)
 
-    val ExtrasVersion = "0.51.0"
+    val CatsVersion     = "2.13.0"
+    val EffectieVersion = "2.3.0"
+    val ExtrasVersion   = "0.51.0"
 
     val HedgehogVersion = "0.13.0"
 
@@ -119,6 +125,9 @@ lazy val props =
 
 lazy val libs =
   new {
+
+    lazy val catsCore     = Def.setting("org.typelevel" %%% "cats-core"     % props.CatsVersion)
+    lazy val effectieCats = Def.setting("io.kevinlee"   %%% "effectie-cats" % props.EffectieVersion)
 
     lazy val tests = new {
       lazy val hedgehog = Def.setting(

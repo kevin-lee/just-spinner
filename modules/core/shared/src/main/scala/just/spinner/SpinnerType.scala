@@ -1,6 +1,6 @@
 package just.spinner
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 
 /** Defines a spinner animation with its frames and interval.
   */

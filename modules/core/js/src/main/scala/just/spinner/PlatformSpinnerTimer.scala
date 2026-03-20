@@ -1,5 +1,7 @@
 package just.spinner
 
+import cats.Id
+
 import scala.concurrent.duration.FiniteDuration
 import scala.scalajs.js.timers
 
@@ -7,10 +9,10 @@ import scala.scalajs.js.timers
   */
 private[spinner] object PlatformSpinnerTimer {
 
-  val create: SpinnerTimer = new SpinnerTimer {
-    def scheduleAtFixedRate(interval: FiniteDuration)(task: => Unit): SpinnerTimer.CancelToken = {
+  val create: SpinnerTimer[Id] = new SpinnerTimer[Id] {
+    def scheduleAtFixedRate(interval: FiniteDuration)(task: => Unit): SpinnerTimer.CancelToken[Id] = {
       val handle = timers.setInterval(interval)(task)
-      SpinnerTimer.CancelToken(() => timers.clearInterval(handle))
+      SpinnerTimer.CancelToken[Id](() => timers.clearInterval(handle))
     }
   }
 

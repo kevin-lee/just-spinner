@@ -1,7 +1,7 @@
 package just.spinner
 
-import hedgehog._
-import hedgehog.runner._
+import hedgehog.*
+import hedgehog.runner.*
 
 object StringWidthSpec extends Properties {
 
@@ -23,9 +23,13 @@ object StringWidthSpec extends Properties {
 
   def testCjkWidth: Result = {
     // Each CJK character should be width 2
-    (StringWidth.calculate("\u4e16") ==== 2) and           // 世
-      (StringWidth.calculate("\u4e16\u754c") ==== 4) and   // 世界
-      (StringWidth.calculate("\u3053\u3093") ==== 4)        // こん (hiragana)
+    (StringWidth.calculate("\u4e16") ==== 2)
+      .and( // 世
+        StringWidth.calculate("\u4e16\u754c") ==== 4
+      )
+      .and( // 世界
+        StringWidth.calculate("\u3053\u3093") ==== 4
+      ) // こん (hiragana)
   }
 
   def testAnsiStripping: Result = {

@@ -1,9 +1,9 @@
 package just.spinner
 
-import hedgehog._
-import hedgehog.runner._
+import hedgehog.*
+import hedgehog.runner.*
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 
 object SpinnerTypeSpec extends Properties {
 
