@@ -1,8 +1,6 @@
 package example
 
-import cats.Id
-import effectie.instances.id.fx._
-import just.spinner._
+import just.spinner.*
 
 import scala.concurrent.{Future, Promise}
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -18,8 +16,8 @@ object Main {
     p.future
   }
 
-  private def createSpinner(config: SpinnerConfig): SpinnerHandle[Id] =
-    Spinner.create[Id](config, TerminalOutput.stderr[Id], SpinnerTimer.create, SpinnerRefMaker.atomicRef[Id])
+  private def createSpinner(config: SpinnerConfig): SpinnerNoFx =
+    Spinner.createDefaultSideEffect(config)
 
   private def scenario1(): Future[Unit] = {
     println("\n=== Scenario 1: Basic spinner with succeed ===")

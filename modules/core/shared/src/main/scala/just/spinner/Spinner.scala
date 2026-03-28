@@ -33,7 +33,7 @@ object Spinner {
   ): F[SpinnerHandle[F]] =
     SpinnerHandle[F](config, output, timer, mkRef)
 
-  def createDefaultSideEffect(config: SpinnerConfig): SpinnerHandle[cats.Id] = {
+  def createDefaultSideEffect(config: SpinnerConfig): SpinnerNoFx = {
     import effectie.instances.id.fx.idFx
     create[cats.Id](config, TerminalOutput.stderr[cats.Id], SpinnerTimer.create, SpinnerRefMaker.atomicRef[cats.Id])
   }
