@@ -18,7 +18,8 @@ ThisBuild / scmInfo :=
     s"https://github.com/${props.GitHubUsername}/${props.RepoName}.git",
   ).some
 
-lazy val root = (project in file("."))
+lazy val justSpinner = (project in file("."))
+  .enablePlugins(DevOopsGitHubReleasePlugin)
   .settings(
     name := props.ProjectName,
     crossScalaVersions := props.CrossScalaVersions,
@@ -124,8 +125,8 @@ lazy val props =
 lazy val libs =
   new {
 
-    lazy val catsCore     = Def.setting("org.typelevel" %%% "cats-core"     % props.CatsVersion)
-    lazy val effectieCats = Def.setting("io.kevinlee"   %%% "effectie-cats" % props.EffectieVersion)
+    lazy val catsCore     = Def.setting("org.typelevel" %%% "cats-core" % props.CatsVersion)
+    lazy val effectieCats = Def.setting("io.kevinlee" %%% "effectie-cats" % props.EffectieVersion)
 
     lazy val tests = new {
       lazy val hedgehog = Def.setting(
