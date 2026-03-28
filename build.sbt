@@ -21,7 +21,8 @@ ThisBuild / scmInfo :=
 
 lazy val root = (project in file("."))
   .settings(
-    name := props.ProjectName
+    name := props.ProjectName,
+    crossScalaVersions := props.CrossScalaVersions,
   )
   .settings(noPublish)
   .aggregate(
