@@ -1,7 +1,6 @@
 import sbtcrossproject.CrossProject
 
 ThisBuild / scalaVersion := props.ScalaVersion
-ThisBuild / version := props.ProjectVersion
 ThisBuild / organization := props.Org
 ThisBuild / organizationName := props.OrgName
 ThisBuild / developers := List(
@@ -110,8 +109,6 @@ lazy val props =
     val CrossScalaVersions = List("2.13.18", "3.3.7")
     val Org                = "io.kevinlee"
     val OrgName            = "Kevin's Code"
-
-    val ProjectVersion = "0.1.0-SNAPSHOT"
 
     lazy val licenses = List(License.MIT)
 
