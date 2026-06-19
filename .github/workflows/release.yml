@@ -25,7 +25,7 @@ jobs:
           - { name: "Scala 3", version: "3.3.7",   binary-version: "3",    java-version: "11", java-distribution: "temurin", report: "" }
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
         with:
           java-version: ${{ matrix.scala.java-version }}
@@ -68,7 +68,7 @@ jobs:
           - { name: "Scala 2", version: "2.13.18", binary-version: "2.13", java-version: "11", java-distribution: "temurin", report: "report" }
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
         with:
           java-version: ${{ matrix.scala.java-version }}
@@ -104,7 +104,7 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: actions/setup-java@v5
       with:
         java-version: ${{ env.GH_JAVA_VERSION }}
@@ -131,7 +131,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: actions/setup-java@v5
@@ -172,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: actions/setup-java@v5
